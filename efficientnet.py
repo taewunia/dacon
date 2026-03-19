@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+import torchmetrics
 from PIL import Image
 import torch
 import torch.nn as nn
@@ -10,8 +11,7 @@ from torchvision import models, transforms
 from torchvision.models import ResNet18_Weights
 from tqdm import tqdm
 import timm
-
-model = timm.create_model('efficientnet_b0', pretrained=True, num_classes=2)
+from torchmetrics import Accuracy, F1Score, MetricCollection
 
 # 하이퍼파라미터 설정
 CFG = {
@@ -22,6 +22,15 @@ CFG = {
     'SEED': 42
 }
 
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+print(device)
+
+metrics = MetricCollection({
+    "acc" : Accuracy(task="multiclass", num_classes=2),
+    "f1" : F1Score(task="multiclass", num_classes=2, average="macro")
+})
+metrics = metrics.to(device)
+
 def seed_everything(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -29,8 +38,6 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
 
 seed_everything(CFG['SEED'])
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-print(device)
 
 train_df = pd.read_csv('/Users/choetaewon/Documents/GitHub/bacon/data/open/train.csv')
 val_df = pd.read_csv('/Users/choetaewon/Documents/GitHub/bacon/data/open/dev.csv')
@@ -66,6 +73,25 @@ class MultiViewDataset(Dataset):
 
         label = self.label_map[self.df.iloc[idx]['label']]
         return views, label
+
+
+class Multiviewmodel(nn.Module):
+    def __init__(self, backbone_name='efficientnet_b0'):
+        super(Multiviewmodel, self).__init__()
+        self.backbone_model = timm.create_model(backbone_name, pretrained=True, num_classes=0)
+
+        num_features = self.backbone_model.num_features
+
+        self.classifier = nn.Linear(num_features * 2, 1)
+
+    def forward(self, front_views, bottom_views):
+        front_pred = self.backbone_model(front_views)
+        bottom_pred = self.backbone_model(bottom_views)
+
+        combined_pred = self.classifier(torch.cat((front_pred, bottom_pred), dim=1))
+
+        return combined_pred
+
 
 train_transform = transforms.Compose([
     transforms.Resize((CFG['IMG_SIZE'], CFG['IMG_SIZE'])),
@@ -112,6 +138,7 @@ def validate(model, loader, criterion, device):
     all_probs = np.array(all_probs, dtype=np.float64)
     all_labels = np.array(all_labels, dtype=np.float64)
 
+
     eps = 1e-15
     p = np.clip(all_probs, eps, 1 - eps)
     # Binary Log Loss 공식 직접 적용
@@ -122,12 +149,38 @@ def validate(model, loader, criterion, device):
 
     return logloss_score, acc_score
 
+model = Multiviewmodel()
 model = model.to(device)
 criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(model.parameters(), lr=CFG['LEARNING_RATE'])
 
-# --- Main Loop ---
+train_loss_history = []
+val_loss_history = []
+
 for epoch in range(CFG['EPOCHS']):
-    train_process_bar = tqdm(train_loader, desc=f"Training {epoch}/{CFG['EPOCHS']}", colour='green')
-    for train_img, train_label in train_process_bar:
-        train_img, train_label = train_img.to(device), train_label.to(device)
+    model.train()
+    avg_train_loss = 0
+    avg_val_loss = 0
+    total_train_loss = 0
+    total_val_loss = 0
+    metrics.reset()
+    train_process_bar = tqdm(train_loader, desc=f"Training {epoch + 1}/{CFG['EPOCHS']}", colour='green')
+    for views, labels in train_process_bar:
+        front_views = views[0].to(device)
+        top_views = views[1].to(device)
+        label_views = labels.float().to(device)
+
+        optimizer.zero_grad()
+        pred = model(front_views, top_views)
+        pred = pred.view(-1)
+        train_loss = criterion(pred, label_views)
+        train_loss.backward()
+        optimizer.step()
+        train_process_bar.set_postfix(train_loss=train_loss.item())
+        total_train_loss += train_loss.item()
+        metrics.update(pred, label_views)
+    metrics.compute()
+    avg_train_loss = total_train_loss / len(train_loader)
+    train_loss_history.append(avg_train_loss)
+    score_result = metrics.compute()
+    print(f"loss={avg_train_loss:.3f} acc={score_result['acc'].item() * 100:.3f} f1={score_result['f1'].item() * 100:.3f}")
