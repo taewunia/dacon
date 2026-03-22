@@ -18,9 +18,9 @@ CFG = {
     'IMG_SIZE': 384,
     'EPOCHS': 30,
     'LEARNING_RATE': 5e-5,
-    'BATCH_SIZE': 32,
+    'BATCH_SIZE': 16,
     'SEED': 42,
-    'WEIGHT_DECAY': 1e-4
+    'WEIGHT_DECAY': 1e-2
 }
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -159,7 +159,7 @@ def validate(model, loader, criterion, device):
 model = Multiviewmodel()
 model = model.to(device)
 criterion = nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(model.parameters(), lr=CFG['LEARNING_RATE'], weight_decay=CFG['WEIGHT_DECAY'])
+optimizer = optim.AdamW(model.parameters(), lr=CFG['LEARNING_RATE'], weight_decay=CFG['WEIGHT_DECAY'])
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=CFG['EPOCHS'])
 
 train_loss_history = []
