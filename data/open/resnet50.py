@@ -77,7 +77,7 @@ class MultiViewDataset(Dataset):
 
 
 class Multiviewmodel(nn.Module):
-    def __init__(self, backbone_name='efficientnet_b0'):
+    def __init__(self, backbone_name='resnet50'):
         super(Multiviewmodel, self).__init__()
         self.backbone_model = timm.create_model(backbone_name, pretrained=True, num_classes=0)
 
@@ -257,11 +257,11 @@ for epoch in range(CFG['EPOCHS']):
     train_f1_history.append(train_score_result['f1'].item())
     val_f1_history.append(val_score_result['f1'].item())
     print(f"\ntrain_loss={avg_train_loss:.2f} train_acc={train_score_result['acc'].item() * 100:.2f} train_f1={train_score_result['f1'].item() * 100:.2f}\nval_loss={avg_val_loss:.2f} val_acc={val_score_result['acc'].item() * 100:.2f} val_f1={val_score_result['f1'].item() * 100:.2f}")
-    #if val_score_result['f1'].item() > 0.75 and val_loss.item() <= 0.5:
-        #print(f"early stopping {val_score_result['f1'].item()*100:.2f} {val_loss.item():.2f}")
-        #model.to("cpu")
-        #torch.save(model, '/Users/choetaewon/Documents/GitHub/bacon/data/open/train_model.pt')
-        #break
+    if val_score_result['f1'].item() > 0.75 and val_loss.item() <= 0.5:
+        print(f"early stopping {val_score_result['f1'].item()*100:.2f} {val_loss.item():.2f}")
+        model.to("cpu")
+        torch.save(model, '/Users/choetaewon/Documents/GitHub/bacon/data/open/train_model.pt')
+        break
 
 plt.plot(range(1, len(train_loss_history) + 1), train_loss_history, label='train loss', color='green')
 plt.title("avg_train_loss")

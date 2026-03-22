@@ -10,10 +10,10 @@ import torch.nn as nn
 import timm
 test_df = pd.read_csv('/Users/choetaewon/Documents/GitHub/bacon/data/open/sample_submission.csv')
 CFG = {
-    'IMG_SIZE': 224,
+    'IMG_SIZE': 384,
     'EPOCHS': 30,
-    'LEARNING_RATE': 1e-4,
-    'BATCH_SIZE': 64,
+    'LEARNING_RATE': 5e-5,
+    'BATCH_SIZE': 32,
     'SEED': 42,
     'WEIGHT_DECAY': 1e-4
 }
