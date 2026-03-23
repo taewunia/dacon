@@ -17,7 +17,7 @@ import cv2
 CFG = {
     'IMG_SIZE': 384,
     'EPOCHS': 30,
-    'LEARNING_RATE': 5e-5,
+    'LEARNING_RATE': 5e-4,
     'BATCH_SIZE': 16,
     'SEED': 42,
     'WEIGHT_DECAY': 1e-2
@@ -82,6 +82,8 @@ class Multiviewmodel(nn.Module):
         self.backbone_model = timm.create_model(backbone_name, pretrained=True, num_classes=0)
 
         num_features = self.backbone_model.num_features
+        for param in self.backbone_model.parameters():
+            param.requires_grad = False
 
         self.classifier = nn.Sequential(
             nn.Dropout(p=0.5),
