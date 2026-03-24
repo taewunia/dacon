@@ -46,14 +46,44 @@ class MultiViewDataset(Dataset):
         label = self.label_map[self.df.iloc[idx]['label']]
         return views, label
 
-test_transform = transforms.Compose([
-    transforms.Resize((CFG['IMG_SIZE'], CFG['IMG_SIZE'])),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
 
-test_DS = MultiViewDataset(test_df, '/Users/choetaewon/Documents/GitHub/bacon/data/open/test', transform=test_transform, is_test=True)
-test_DL =DataLoader(test_DS, batch_size=CFG['BATCH_SIZE'], shuffle=False, num_workers=0)
+tta_transforms = {
+    'original': transforms.Compose([
+        transforms.Resize((CFG['IMG_SIZE'], CFG['IMG_SIZE'])),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]),
+
+    'h_flip': transforms.Compose([
+        transforms.Resize((CFG['IMG_SIZE'], CFG['IMG_SIZE'])),
+        transforms.RandomHorizontalFlip(p=1.0),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]),
+
+    'r_rotate': transforms.Compose([
+        transforms.Resize((CFG['IMG_SIZE'], CFG['IMG_SIZE'])),
+        transforms.RandomRotation(degrees=10),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]),
+
+    'color': transforms.Compose([
+        transforms.Resize((CFG['IMG_SIZE'], CFG['IMG_SIZE'])),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.ToTensor(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]),
+    'r_crop': transforms.Compose([
+        transforms.Resize((410, 410)),
+        transforms.CenterCrop(384),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]),
+}
+
+
 device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
 class Multiviewmodel(nn.Module):
@@ -78,24 +108,46 @@ class Multiviewmodel(nn.Module):
 model = torch.load('/Users/choetaewon/Documents/GitHub/bacon/data/open/train_model_ConvNeXt2.pt', map_location=device, weights_only=False)
 
 model.eval()
-all_probs = []
+all_probs1 = []
+all_probs2 = []
+all_probs3 = []
+all_probs4 = []
+all_probs5 = []
 
-
+i = 0
+all_tta = []
 with torch.no_grad():
-	for views in tqdm(test_DL, desc="Inference"):
-		front_views = views[0].to(device)
-		top_views = views[1].to(device)
-		outputs = model(front_views, top_views).view(-1)
-		probs = torch.sigmoid(outputs)
-		all_probs.extend(probs.cpu().numpy())
+    for tta_name, transform in tta_transforms.items():
+        i += 1
+        test_DS = MultiViewDataset(test_df, '/Users/choetaewon/Documents/GitHub/bacon/data/open/test', transform=transform, is_test=True)
+        test_DL = DataLoader(test_DS, batch_size=CFG['BATCH_SIZE'], shuffle=False, num_workers=0)
+        for views in tqdm(test_DL, desc="Inference"):
+            front_views = views[0].to(device)
+            top_views = views[1].to(device)
+            outputs = model(front_views, top_views).view(-1)
+            probs = torch.sigmoid(outputs).cpu().numpy()
 
-all_probs = np.array(all_probs)
+            if i == 1:
+                list = all_probs1
+            elif i == 2:
+                list = all_probs2
+            elif i == 3:
+                list = all_probs3
+            elif i == 4:
+                list = all_probs4
+            elif i == 5:
+                list = all_probs5
+
+            list.extend(probs)
+        all_tta.append(list)
+
+final_probs = np.mean(all_tta, axis=0)
 # 결과 저장 (컬럼  순서 중요)
 submission = pd.DataFrame({
-	'id': test_df['id'],
-	'unstable_prob': all_probs,  # unstable일 확률 저장
-	'stable_prob': 1.0 - all_probs  # stable일 확률 저장
+    'id': test_df['id'],
+    'unstable_prob': final_probs,  # unstable일 확률 저장
+    'stable_prob': 1.0 - final_probs  # stable일 확률 저장
 })
 
-submission.to_csv('submission_convnextv2_base.csv', encoding='UTF-8-sig', index=False)
+submission.to_csv('submission_convnextv2_base(tta).csv', encoding='UTF-8-sig', index=False)
 print("submission_res.csv 저장 완료.")
