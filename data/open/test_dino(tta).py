@@ -10,10 +10,10 @@ import torch.nn as nn
 import timm
 test_df = pd.read_csv('/Users/choetaewon/Documents/GitHub/bacon/data/open/sample_submission.csv')
 CFG = {
-    'IMG_SIZE': 384,
+    'IMG_SIZE': 518,
     'EPOCHS': 30,
     'LEARNING_RATE': 5e-5,
-    'BATCH_SIZE': 256,
+    'BATCH_SIZE': 32,
     'SEED': 42,
     'WEIGHT_DECAY': 1e-4
 }
@@ -74,19 +74,13 @@ tta_transforms = {
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ]),
-    'r_crop': transforms.Compose([
-        transforms.Resize((410, 410)),
-        transforms.CenterCrop(384),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]),
 }
 
 
 device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
 class Multiviewmodel(nn.Module):
-    def __init__(self, backbone_name='resnet50'):
+    def __init__(self, backbone_name='vit_base_patch14_dinov2.lvd142m'):
         super(Multiviewmodel, self).__init__()
         self.backbone_model = timm.create_model(backbone_name, pretrained=True, num_classes=0)
 
@@ -103,15 +97,13 @@ class Multiviewmodel(nn.Module):
         return combined_pred
 
 
-
-model = torch.load('/Users/choetaewon/Documents/GitHub/bacon/data/open/train_model1.pt', map_location=device, weights_only=False)
+model = torch.load('/Users/choetaewon/Documents/GitHub/bacon/data/open/train_model_dino2.pt', map_location=device, weights_only=False)
 
 model.eval()
 all_probs1 = []
 all_probs2 = []
 all_probs3 = []
 all_probs4 = []
-all_probs5 = []
 
 i = 0
 all_tta = []
@@ -134,8 +126,6 @@ with torch.no_grad():
                 list = all_probs3
             elif i == 4:
                 list = all_probs4
-            elif i == 5:
-                list = all_probs5
 
             list.extend(probs)
         all_tta.append(list)
@@ -148,5 +138,5 @@ submission = pd.DataFrame({
     'stable_prob': 1.0 - final_probs  # stable일 확률 저장
 })
 
-submission.to_csv('submission_resnet(tta).csv', encoding='UTF-8-sig', index=False)
-print("submission_res.csv 저장 완료.")
+submission.to_csv('submission_dino(tta).csv', encoding='UTF-8-sig', index=False)
+print("submission_dino.csv 저장 완료.")
